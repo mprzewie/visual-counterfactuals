@@ -6,6 +6,7 @@
 
 import albumentations
 import torch
+import torchvision
 import torchvision.transforms as transforms
 
 from albumentations.pytorch.transforms import ToTensorV2
@@ -68,6 +69,20 @@ def get_test_transform():
         ),
     )
 
+def get_test_transform_wo_normalize():
+    return albumentations.Compose(
+        [
+            albumentations.SmallestMaxSize(max_size=256),
+            albumentations.CenterCrop(width=224, height=224),
+            ToTensorV2(),
+        ],
+        keypoint_params=albumentations.KeypointParams(
+            format="xy", remove_invisible=True, label_fields=["keypoints_ids"]
+        ),
+    )
+
+def normalize_cub(img):
+    return torchvision.transforms.Normalize((0.471, 0.460, 0.454), (0.267, 0.266, 0.271))(img)
 
 def get_imagenet_test_transform():
     normalize = transforms.Normalize(

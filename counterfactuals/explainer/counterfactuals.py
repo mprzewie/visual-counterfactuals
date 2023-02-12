@@ -71,7 +71,9 @@ def compute_counterfactual(
         np.arange(query_fl.shape[0] * distractor_fl.shape[0]) % distractor_fl.shape[0]
     )
     all_edits = [(i, j) for i, j in zip(query_edits, distractor_edits)]
+    # print(f"{query.shape=}, {query_fl.shape=}, {distractor.shape=}, {distractor_fl.shape=}, {len(all_edits)=}")
 
+    # print(all_edits[:10])
     if topk is not None:
         all_edits = _find_knn_cells(
             query_aux_features_fl, distractor_aux_features_fl, all_edits, topk

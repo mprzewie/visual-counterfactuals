@@ -7,6 +7,10 @@
 import argparse
 import os
 
+import torchvision.transforms
+from torch.utils.data import Subset
+
+from PIL import  Image
 import model.auxiliary_model as auxiliary_model
 import numpy as np
 import torch
@@ -21,9 +25,12 @@ from utils.common_config import (
     get_model,
     get_test_dataloader,
     get_test_dataset,
-    get_test_transform,
+    get_test_transform, get_test_transform_wo_normalize, normalize_cub
 )
 from utils.path import Path
+from pathlib import Path as PathlibPath
+import matplotlib.pyplot as plt
+import torchvision.transforms.functional as ttf
 
 parser = argparse.ArgumentParser(description="Generate counterfactual explanations")
 parser.add_argument("--config_path", type=str, required=True)
@@ -42,6 +49,9 @@ def main():
 
     # create dataset
     dataset = get_test_dataset(transform=get_test_transform())
+
+    dataset_resize_only = get_test_dataset(transform=get_test_transform_wo_normalize())
+
     dataloader = get_test_dataloader(config, dataset)
 
     # device
@@ -113,7 +123,7 @@ def main():
             continue  # skips images that were classified incorrectly
 
         # gather query features
-        query = features[query_index]  # dim x n_row x n_row
+        query_fm = features[query_index]  # dim x n_row x n_row
         query_pred = preds[query_index]
         if query_pred != targets[query_index]:
             continue  # skip if query classified incorrect
@@ -137,7 +147,7 @@ def main():
             if len(distractor_index) == 0:
                 continue  # skip if no distractors classified correct
 
-        distractor = torch.stack([features[jj] for jj in distractor_index], dim=0)
+        distractor_fm = torch.stack([features[jj] for jj in distractor_index], dim=0)
 
         # soft constraint uses auxiliary features
         if use_auxiliary_features:
@@ -156,8 +166,8 @@ def main():
         # compute counterfactual
         try:
             list_of_edits = compute_counterfactual(
-                query=query,
-                distractor=distractor,
+                query=query_fm,
+                distractor=distractor_fm,
                 classification_head=classifier_head,
                 distractor_class=distractor_target,
                 query_aux_features=query_aux_features,
@@ -169,8 +179,86 @@ def main():
                 else None,
             )
 
-        except BaseException:
-            print("warning - no counterfactual @ index {}".format(query_index))
+            di = list(distractor_index)[0]
+            # print(query_index, distractor_index)
+            q_img = dataset_resize_only[query_index]["image"]
+            q_parts = dataset[query_index]["parts"]
+            query_label = dataset[query_index]["target"]
+
+            c, h, w = q_img.shape
+            fc, fh, fw = query_fm.shape
+
+            cell_h, cell_w = h // fh, w // fw
+
+
+
+            d_img = dataset_resize_only[di]["image"]
+            d_parts = dataset[di]["parts"]
+            distractor_label = dataset[di]["target"]
+
+
+            fig, ax = plt.subplots(nrows=1, ncols=5, figsize=(30, 6))
+
+
+            q_img_pil: Image.Image = ttf.to_pil_image(q_img)
+
+            ax[0].imshow(q_img_pil)
+            ax[0].set_title(f"{query_label=}")
+
+            d_img_pil: Image.Image = ttf.to_pil_image(d_img)
+
+            ax[1].imshow(d_img_pil)
+            ax[1].set_title(f"{distractor_label=}")
+
+
+            q_patches = Image.new("RGB", (w, h))
+            d_patches = Image.new("RGB", (w, h))
+
+            counterfactual=q_img_pil.copy()
+
+            for (e_q, e_d) in list_of_edits:
+                e_q_h = (e_q // fw) * cell_h
+                e_q_w = (e_q % fw) * cell_w
+
+                e_d_h = (e_d // fw) *cell_h
+                e_d_w = (e_d % fw) * cell_w
+
+                # print(f"{(e_q, e_d)=} => {((e_q_h, e_q_w), (e_d_h, e_d_w))}")
+
+                q_box = (e_q_w, e_q_h, e_q_w + cell_w, e_q_h + cell_h)
+                q_crop = q_img_pil.crop(q_box)
+
+                d_box = (e_d_w, e_d_h, e_d_w + cell_w, e_d_h + cell_h)
+                d_crop = d_img_pil.crop(d_box)
+
+                q_patches.paste(q_crop, q_box)
+                d_patches.paste(d_crop, d_box)
+
+                counterfactual.paste(d_crop, q_box)
+
+
+
+            ax[2].imshow(q_patches)
+            ax[2].set_title(f"query edits,  #edits = {len(list_of_edits)}")
+
+            ax[3].imshow(d_patches)
+            ax[3].set_title("distractor edits")
+
+
+            ax[4].imshow(counterfactual)
+            ax[4].set_title(f"c-factual")
+
+            img_path = PathlibPath("renders") / PathlibPath(args.config_path).stem / f"cf_{query_index}.png"
+
+            img_path.parent.mkdir(exist_ok=True, parents=True)
+            plt.savefig(img_path)
+
+
+
+
+        except BaseException as e:
+            print(f"warning - no counterfactual @ index {query_index} bc of {e}")
+            raise
             continue
 
         counterfactuals[query_index] = {

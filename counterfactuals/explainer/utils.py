@@ -9,6 +9,7 @@ import torch
 import torchmetrics
 
 from sklearn.metrics import confusion_matrix
+from tqdm import tqdm
 
 
 def get_query_distractor_pairs(
@@ -30,7 +31,7 @@ def get_query_distractor_pairs(
     result = {}
 
     # process all images
-    for query_index in range(len(dataset)):
+    for query_index in tqdm(list(range(len(dataset))), "get_query_distractor_pairs"):
         # determine the distractor class for this sample
         query_class = dataset.__getitem__(query_index)["target"]
         row = np.copy(confusion_matrix[query_class])
@@ -54,6 +55,9 @@ def get_query_distractor_pairs(
             "query_index": query_index,
             "query_class": query_class,
         }
+
+        # if query_index > 10:
+        #     break
 
     return result
 

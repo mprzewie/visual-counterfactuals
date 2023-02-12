@@ -9,11 +9,11 @@ class Path:
     @staticmethod
     def db_root_dir(db_name):
         if db_name == "CUB":
-            return "/path/to/dataset"
+            return "/home/mprzewie/coding/uj/few-shot-hypernets/filelists/CUB/CUB_200_2011"
 
         else:
             raise NotImplementedError
 
     @staticmethod
     def output_root_dir():
-        return "/path/to/output/"
+        return "/home/mprzewie/coding/uj/visual-counterfactuals/results/"
