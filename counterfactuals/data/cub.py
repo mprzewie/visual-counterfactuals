@@ -5,12 +5,13 @@
 # LICENSE file in the root directory of this source tree.
 
 import pathlib
+from typing import Optional, Callable
 
 import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
 
-from torchvision.datasets.folder import default_loader
+from torchvision.datasets.folder import default_loader, ImageFolder
 from utils.path import Path
 
 
@@ -262,4 +263,50 @@ class Cub(Dataset):
             np.argwhere(np.array(self._data["target"].tolist()) == target + 1)
             .reshape(-1)
             .tolist()
+        )
+
+class CubFramed(ImageFolder):
+    def __init__(
+            self,
+            train: bool = True,
+            transform: Callable = None,
+            target_transform: Callable = None,
+            loader: Callable = default_loader,
+            is_valid_file: Optional[Callable] = None
+    ) -> None:
+        root = pathlib.Path(Path.db_root_dir("CUB_framed")) / (
+            "train_birds/train_birds/train_birds/"
+            if train
+            else "test_birds/test_birds/test_birds/"
+        )
+
+        transform_fn = lambda image: transform(
+            image=np.array(image, dtype=np.uint8),
+            keypoints=np.array([]),
+            keypoints_ids=np.array([])
+        )
+        super().__init__(
+            root,
+            transform=transform_fn,
+            target_transform=target_transform,
+            loader=loader,
+            is_valid_file=is_valid_file
+        )
+
+    def __getitem__(self, item):
+        x, y = super(ImageFolder, self).__getitem__(item)
+        parts = np.zeros((12, 7, 7), dtype=np.uint8)
+
+        return {
+            "image": x["image"],
+            "target": y,
+            "parts": parts
+        }
+
+    def get_target(self, target):
+        return (
+            [
+                i for (i, t) in enumerate(self.targets) if
+                t == target+1
+            ]
         )

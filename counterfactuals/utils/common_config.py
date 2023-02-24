@@ -10,7 +10,7 @@ import torchvision
 import torchvision.transforms as transforms
 
 from albumentations.pytorch.transforms import ToTensorV2
-from data.cub import Cub
+from data.cub import Cub, CubFramed
 from model.model import ResNet50, VGG16
 
 
@@ -31,6 +31,10 @@ def get_train_dataset(transform, return_image_only=False):
 
 def get_test_dataset(transform, return_image_only=False):
     return Cub(train=False, transform=transform, return_image_only=return_image_only)
+
+
+def get_test_dataset_framed(transform):
+    return CubFramed(train=False, transform=transform)
 
 
 def get_train_transform():

@@ -9,11 +9,13 @@ class Path:
     @staticmethod
     def db_root_dir(db_name):
         if db_name == "CUB":
-            return "/home/mprzewie/coding/uj/few-shot-hypernets/filelists/CUB/CUB_200_2011"
-
+            return "/shared/sets/datasets/vision/CUB-200/"
+        if db_name == "CUB_framed":
+            return "/shared/sets/datasets/birds/"
         else:
             raise NotImplementedError
 
     @staticmethod
     def output_root_dir():
-        return "/home/mprzewie/coding/uj/visual-counterfactuals/results/"
+        return "/home/przewiez/uj/visual-counterfactuals/results"
+        # return "/home/mprzewie/coding/uj/visual-counterfactuals/results/"
