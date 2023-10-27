@@ -12,17 +12,32 @@ import torchvision.transforms as transforms
 from albumentations.pytorch.transforms import ToTensorV2
 from data.cub import Cub, CubFramed
 from model.model import ResNet50, VGG16
-
+from protopool import PrototypeChooser
 
 def get_model(p):
-    if p["model"] == "VGG16":
-        return VGG16(**p["model_kwargs"])
+    if p["model_type"] == "classifier":
+        if p["model"] == "VGG16":
+            return VGG16(**p["model_kwargs"])
 
-    elif p["model"] == "ResNet50":
-        return ResNet50(**p["model_kwargs"])
+        elif p["model"] == "ResNet50":
+            return ResNet50(**p["model_kwargs"])
+    elif  p["model_type"] == "protopool":
+        return PrototypeChooser(
+            num_prototypes=202,
+            num_descriptive=10,
+            num_classes=200,
+            use_thresh=True,
+            arch='resnet50',
+            pretrained=False,
+            add_on_layers_type='log',
+            prototype_activation_function='log',
+            proto_depth=256,
+            use_last_layer=True,
+            inat=True,
+        )
 
-    else:
-        raise NotImplementedError
+
+    raise NotImplementedError
 
 
 def get_train_dataset(transform, return_image_only=False):
@@ -33,8 +48,8 @@ def get_test_dataset(transform, return_image_only=False):
     return Cub(train=False, transform=transform, return_image_only=return_image_only)
 
 
-def get_test_dataset_framed(transform):
-    return CubFramed(train=False, transform=transform)
+def get_test_dataset_framed(transform, return_image_only=False):
+    return CubFramed(train=False, transform=transform, return_image_only=False)
 
 
 def get_train_transform():
@@ -78,6 +93,29 @@ def get_test_transform_wo_normalize():
         [
             albumentations.SmallestMaxSize(max_size=256),
             albumentations.CenterCrop(width=224, height=224),
+            ToTensorV2(),
+        ],
+        keypoint_params=albumentations.KeypointParams(
+            format="xy", remove_invisible=True, label_fields=["keypoints_ids"]
+        ),
+    )
+
+def get_test_transform_resize():
+    return albumentations.Compose(
+        [
+            albumentations.Resize(224, 224),
+            albumentations.Normalize((0.471, 0.460, 0.454), (0.267, 0.266, 0.271)),
+            ToTensorV2(),
+        ],
+        keypoint_params=albumentations.KeypointParams(
+            format="xy", remove_invisible=True, label_fields=["keypoints_ids"]
+        ),
+    )
+
+def get_test_transform_resize_wo_normalize():
+    return albumentations.Compose(
+        [
+            albumentations.Resize(224, 224),
             ToTensorV2(),
         ],
         keypoint_params=albumentations.KeypointParams(

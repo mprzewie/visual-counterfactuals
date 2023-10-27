@@ -11,6 +11,8 @@ import torchmetrics
 from sklearn.metrics import confusion_matrix
 from tqdm import tqdm
 
+from protopool import PrototypeChooser
+
 
 def get_query_distractor_pairs(
     dataset,
@@ -62,6 +64,52 @@ def get_query_distractor_pairs(
     return result
 
 
+def get_query_distractor_pairs_with_predetermined_targets(
+    query_dataset,
+    targets,
+    ground_truth_dataset,
+    max_num_distractors,
+    seed=0,
+):
+    """
+    Compute query-distractor image pairs using a confusion matrix:
+        (1) For each query class, we select the most confusing
+        class as it's distractor class.
+        (2) Next, we randomly sample `max_num_distractors`
+        from the distractor class as the distractor images.
+
+    We return the result as a a dictionary.
+    """
+    np.random.seed(seed)
+    result = {}
+
+    # process all images
+    for query_index in tqdm(list(range(len(query_dataset))), "get_query_distractor_pairs"):
+        # determine the distractor class for this sample
+        query_class = query_dataset.__getitem__(query_index)[1]
+        
+        distractor_class = targets[query_index]
+        
+        # TODO: I need to gather distractors from the *real* data...
+
+        # gater all images belonging to distractor class
+        distractor_index = ground_truth_dataset.get_target(distractor_class)
+        # print(f"Found {len(distractor_index)} of class {distractor_class}")
+
+        # randomly select `max_num_distractors`
+        num_random = min(len(distractor_index), max_num_distractors)
+        distractor_index = np.random.choice(distractor_index, num_random, replace=False)
+        distractor_index = distractor_index.reshape(-1).tolist()
+
+        result[query_index] = {
+            "distractor_index": distractor_index,
+            "distractor_class": distractor_class,
+            "query_index": query_index,
+            "query_class": query_class,
+        }
+
+    return result
+
 @torch.no_grad()
 def process_dataset(model, dataloader, device):
     """
@@ -81,8 +129,21 @@ def process_dataset(model, dataloader, device):
     targets = []
 
     for batch in dataloader:
-        images, target = batch["image"].to(device), batch["target"].to(device)
-        output = model(images)
+        if isinstance(batch, dict):
+            images, target = batch["image"].to(device), batch["target"].to(device)
+        else:
+            images, target = [t.to(device) for t in batch]
+
+        if isinstance(model, PrototypeChooser):
+            prob, min_distances, proto_presence, activations = model(images, gumbel_scale=10e3)
+            bkb_fts = model.features(images)
+            output = dict(
+                logits = prob,
+                features=bkb_fts
+            )
+
+        else:
+            output = model(images)
         top1(output["logits"], target)
 
         features.append(output["features"].cpu())
@@ -94,7 +155,8 @@ def process_dataset(model, dataloader, device):
     targets = torch.cat(targets, dim=0)
 
     confusion_mat = confusion_matrix(targets.numpy(), preds.numpy())
-
+    print("top1", top1.compute())
+    # assert False, f"{features.shape=}"
     result = {
         "features": features,
         "preds": preds,
@@ -102,5 +164,6 @@ def process_dataset(model, dataloader, device):
         "top1": top1.compute(),
         "confusion_matrix": confusion_mat,
     }
+
 
     return result

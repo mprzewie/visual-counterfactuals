@@ -1,4 +1,4 @@
-batch_size: 32
+batch_size: 64
 num_workers: 4
 
 model: ResNet50
@@ -12,3 +12,4 @@ counterfactuals_kwargs:
     topk: 0.2
     model: class_prediction_model_cub_res50/best_model.ckpt
     max_num_distractors: 20
+    max_edits: 1

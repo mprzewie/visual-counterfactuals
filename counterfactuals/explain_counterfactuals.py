@@ -20,12 +20,14 @@ from explainer.counterfactuals import compute_counterfactual
 from explainer.eval import compute_eval_metrics
 from explainer.utils import get_query_distractor_pairs, process_dataset
 from tqdm import tqdm
+
+from protopool import PrototypeChooser
 from utils.common_config import (
     get_imagenet_test_transform,
     get_model,
     get_test_dataloader,
     get_test_dataset,
-    get_test_transform, get_test_transform_wo_normalize, normalize_cub, get_test_dataset_framed
+    get_test_transform, get_test_transform_wo_normalize, normalize_cub, get_test_dataset_framed, get_test_transform_resize_wo_normalize, get_test_transform_resize
 )
 from utils.path import Path
 from pathlib import Path as PathlibPath
@@ -115,6 +117,10 @@ def main():
     with open(args.config_path, "r") as stream:
         config = yaml.safe_load(stream)
 
+    if "model_type" not in config:
+        print("No model type specified, setting classifier")
+        config["model_type"] = "classifier"
+
     experiment_name = f"{os.path.basename(args.config_path).split('.')[0]}_{args.dataset}"
     dirpath = os.path.join(Path.output_root_dir(), experiment_name)
     os.makedirs(dirpath, exist_ok=True)
@@ -122,10 +128,15 @@ def main():
     # create dataset
 
     dataset_fn = get_test_dataset if args.dataset == "cub" else get_test_dataset_framed
+    test_transform, test_transform_wo_normalize = (
+        (get_test_transform(), get_test_transform_wo_normalize())
+        if args.dataset == "cub"
+        else (get_test_transform_resize(), get_test_transform_resize_wo_normalize())
+    )
 
-    dataset = dataset_fn(transform=get_test_transform())
+    dataset = dataset_fn(transform=test_transform)
 
-    dataset_resize_only = dataset_fn(transform=get_test_transform_wo_normalize())
+    dataset_resize_only = dataset_fn(transform=test_transform_wo_normalize)
 
     dataloader = get_test_dataloader(config, dataset)
 
@@ -140,11 +151,16 @@ def main():
         Path.output_root_dir(),
         config["counterfactuals_kwargs"]["model"],
     )
-    state_dict = torch.load(model_path)["state_dict"]
-    for key in list(state_dict.keys()):
-        state_dict[key[len("model.") :]] = state_dict[key]
-        del state_dict[key]
-    model.load_state_dict(state_dict, strict=True)
+    if config["model_type"] == "classifier":
+        state_dict = torch.load(model_path)["state_dict"]
+        for key in list(state_dict.keys()):
+            state_dict[key[len("model.") :]] = state_dict[key]
+            del state_dict[key]
+        model.load_state_dict(state_dict, strict=True)
+    elif config["model_type"] == "protopool":
+        model.load_state_dict(
+            torch.load(config["counterfactuals_kwargs"]["model"], map_location='cpu')['model_state_dict'], strict=True
+        )
 
     # process dataset
     print("Pre-compute classifier predictions")
@@ -165,7 +181,7 @@ def main():
     )
 
     # get classifier head
-    classifier_head = model.get_classifier_head()
+    classifier_head = model.get_classifier_head() if not isinstance(model, PrototypeChooser) else model.post_backbone_classification()
     classifier_head = torch.nn.DataParallel(classifier_head.cuda())
     classifier_head.eval()
 
@@ -241,7 +257,7 @@ def main():
 
         # compute counterfactual
         try:
-            list_of_edits = compute_counterfactual(
+            list_of_edits, list_of_preds = compute_counterfactual(
                 query=query_fm,
                 distractor=distractor_fm,
                 classification_head=classifier_head,
@@ -256,6 +272,7 @@ def main():
             )
 
             list_of_edits = list_of_edits[:config["counterfactuals_kwargs"].get("max_edits", 1000)]
+            list_of_preds = list_of_preds[:config["counterfactuals_kwargs"].get("max_edits", 1000)]
 
             # assert len(distractor_index)==1, len(distractor_index)
             # di = list(distractor_index)[0]
@@ -379,16 +396,16 @@ def main():
             ax4 = subfigs[4].subplots()
             ax4.imshow(counterfactual)
             ax4.set_title(f"c-factual")
-
+            fig.suptitle(
+                f"q{query_index} / d{distractor_index}: {query_pred} -> {distractor_target} | {','.join([str(p) for p in list_of_preds])}"
+            )
             img_path = PathlibPath(dirpath) / f"cf_{query_index}.png"
 
             img_path.parent.mkdir(exist_ok=True, parents=True)
             print(img_path)
             fig.savefig(img_path)
-            if query_index > 100:
+            if query_index > 1000:
                 assert False
-
-
 
         except BaseException as e:
             print(f"warning - no counterfactual @ index {query_index} bc of {e}")

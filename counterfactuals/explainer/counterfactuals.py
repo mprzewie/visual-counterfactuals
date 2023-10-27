@@ -73,7 +73,7 @@ def compute_counterfactual(
     all_edits = [(i, j) for i, j in zip(query_edits, distractor_edits)]
     print(f"{query.shape=}, {query_fl.shape=}, {distractor.shape=}, {distractor_fl.shape=}, {len(all_edits)=}")
 
-    print(all_edits[:10])
+    # print(all_edits[:10])
     if topk is not None:
         all_edits = _find_knn_cells(
             query_aux_features_fl, distractor_aux_features_fl, all_edits, topk
@@ -87,14 +87,20 @@ def compute_counterfactual(
     )
 
     # loop until prediction changes
-    while (
-        torch.argmax(
+    pred_class = torch.argmax(
             classification_head(current.t().contiguous().view(1, n_feat, n_pix, n_pix)),
             dim=1,
         )
+
+    list_of_preds = [pred_class.item()]
+    while (
+        pred_class
         != distractor_class
     ):
         # find next best cell replacement
+        if len(all_edits) == 0:
+            print("Can't compute c-factual!")
+            break
         query_cell, distractor_cell = _find_single_best_edit(
             all_combinations,
             all_edits,
@@ -118,8 +124,13 @@ def compute_counterfactual(
         all_combinations = _get_feature_representations_of_all_edits(
             current, distractor_fl, all_edits
         )
+        pred_class = torch.argmax(
+            classification_head(current.t().contiguous().view(1, n_feat, n_pix, n_pix)),
+            dim=1,
+        )
+        list_of_preds.append(pred_class.item())
 
-    return list_of_edits
+    return list_of_edits, list_of_preds
 
 
 def _find_knn_cells(query_aux_features, distractor_aux_features, all_edits, topk):

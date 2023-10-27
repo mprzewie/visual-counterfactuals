@@ -1,14 +1,17 @@
-batch_size: 32
+batch_size: 64
 num_workers: 4
 
 model: ResNet50
 model_kwargs:
     num_classes: 200
+model_type: "protopool"
 
 counterfactuals_kwargs:
     apply_soft_constraint: True
     lambd: 0.4
     temperature: 0.1
     topk: 0.2
-    model: class_prediction_model_cub_res50/best_model.ckpt
+    model: /home/marcin.przewiezlikowki/uj/proto_plugen/checkpoints/protopool_best_model_push.pth
     max_num_distractors: 20
+    max_edits: 1
+

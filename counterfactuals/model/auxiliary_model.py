@@ -32,7 +32,12 @@ def process_dataset(model, dim, n_pix, dataloader, device):
     idx = 0
 
     for batch in dataloader:
-        batch_size = batch.shape[0]
+        batch = batch[0] if isinstance(batch, list) else batch
+        try:
+            batch_size = batch.shape[0]
+        except:
+            print(type(batch), batch.keys())
+            raise
         output = model(batch.to(device)).reshape(batch_size, dim, n_pix, n_pix)
         features[idx : idx + batch_size].copy_(output)
         idx += batch_size

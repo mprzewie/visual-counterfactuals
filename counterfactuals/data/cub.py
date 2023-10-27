@@ -272,19 +272,29 @@ class CubFramed(ImageFolder):
             transform: Callable = None,
             target_transform: Callable = None,
             loader: Callable = default_loader,
-            is_valid_file: Optional[Callable] = None
+            is_valid_file: Optional[Callable] = None,
+                    return_image_only=False,
+
     ) -> None:
         root = pathlib.Path(Path.db_root_dir("CUB_framed")) / (
-            "train_birds/train_birds/train_birds/"
+            # "train_birds/train_birds/train_birds/"
+            # if train
+            # else "test_birds/test_birds/test_birds/"
+            "train_birds/"
             if train
-            else "test_birds/test_birds/test_birds/"
+            else "test_birds/"
         )
-
-        transform_fn = lambda image: transform(
-            image=np.array(image, dtype=np.uint8),
-            keypoints=np.array([]),
-            keypoints_ids=np.array([])
-        )
+        
+        if "albumentations" in str(type(transform)):
+            transform_fn = lambda image: transform(
+                image=np.array(image, dtype=np.uint8),
+                keypoints=np.array([]),
+                keypoints_ids=np.array([])
+            )
+        else:
+            transform_fn = transform
+            
+        self.return_image_only = return_image_only
         super().__init__(
             root,
             transform=transform_fn,
@@ -296,17 +306,22 @@ class CubFramed(ImageFolder):
     def __getitem__(self, item):
         x, y = super(ImageFolder, self).__getitem__(item)
         parts = np.zeros((12, 7, 7), dtype=np.uint8)
-
-        return {
-            "image": x["image"],
-            "target": y,
-            "parts": parts
-        }
+        
+        img = x["image"] if isinstance(x, dict) else x
+        
+        if isinstance(x, dict):
+            return {
+                "image": img,
+                "target": y,
+                "parts": parts
+            } if not self.return_image_only else img
+        else:
+            return x, y
 
     def get_target(self, target):
         return (
             [
                 i for (i, t) in enumerate(self.targets) if
-                t == target+1
+                t == target
             ]
         )
